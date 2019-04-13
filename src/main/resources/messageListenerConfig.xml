@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.3.xsd
+		http://www.springframework.org/schema/rabbit http://www.springframework.org/schema/rabbit/spring-rabbit-2.1.xsd
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.3.xsd">
+	
+	
+	<bean id="connectionFactory" class="org.springframework.amqp.rabbit.connection.CachingConnectionFactory">
+		<property name="cacheMode" value="CHANNEL"></property>	
+		<property name="channelCacheSize" value="50"></property>
+		<property name="host" value="192.168.48.131"></property>
+		<property name="port" value="5672"></property>
+		<property name="username" value="admin"></property>
+		<property name="password" value="admin"></property>
+		<property name="virtualHost" value="helloworld2"></property>
+	</bean>
+	
+	<!-- 配置管理对象，这个对象可以创建、绑定、删除交换器和队列 -->
+	<rabbit:admin id="rabbitAdmin" connection-factory="connectionFactory" auto-startup="true"/>
+	
+	<bean id="messageConverter" class="org.springframework.amqp.support.converter.Jackson2JsonMessageConverter"></bean>
+
+	
+	<bean id="messageListener" class="cn.itcast.amqp.message.listener.MyMessageListener"></bean>
+	
+	<bean id="messageListenerContainer" class="org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer">
+		<!-- 指定一个connectionFactory， 一般都是要指定的 -->
+		<property name="connectionFactory" ref="connectionFactory"></property>
+		<!-- 必须指定一个 messageListener  -->
+		<property name="messageListener" ref="messageListener"></property>
+		<!-- 指定要订阅哪个队列，或者说监听哪一个队列 -->
+		<property name="queueNames" value="queue.test"></property>
+		<!-- 指定最大缓存未确认消息数量，关于这个参数的作用以前我们也已经讲过了 -->
+		<property name="prefetchCount" value="1"></property>
+		<property name="messageConverter" ref="messageConverter"></property>
+	</bean>
+	
+	<rabbit:template id="rabbitTemplate" 
+					 message-converter="messageConverter"
+					 connection-factory="connectionFactory"
+	                 exchange="exchange.test"
+	                 routing-key="test.template.key"
+	                 />
+	<rabbit:queue id="queueTest" name="queue.test"></rabbit:queue>                 
+	
+	<rabbit:direct-exchange id="exchangeTest" name="exchange.test">
+		<rabbit:bindings>
+			<rabbit:binding queue="queueTest" key="test.key"></rabbit:binding>
+			<rabbit:binding queue="queueForTemplate" key="test.template.key"></rabbit:binding>
+			<rabbit:binding queue="queueForPojoHandle" key="test.pojo.key"></rabbit:binding>
+			<rabbit:binding queue="queueForDateHandle" key="test.date.key"></rabbit:binding>
+			<rabbit:binding queue="queueForStringHandle" key="test.string.key"></rabbit:binding>
+			<rabbit:binding queue="queueForDateResult" key="test.date.result.key"></rabbit:binding>
+		</rabbit:bindings>
+	</rabbit:direct-exchange>
+	<!-- 指定一个队列，专门用来测试 rabbitTemplate 作为MessageListener 监听的队列
+      	 注意： 这个队列也绑定到  exchange.test 交换器，然后BindingKey 就是test.template.key
+              	而刚好，template 默认的交换器就是 exchange.test， 默认的RoutingKey 就是 test.template.key
+             	 也就是说，如果我们使用这个template 发送消息的话，那么默认是发送到queue.for.template 这个队列
+    -->
+	<rabbit:queue id="queueForTemplate" name="queue.for.template"></rabbit:queue>  
+	
+	<bean id="messageListenerContainer2" class="org.springframework.amqp.rabbit.listener.DirectMessageListenerContainer">
+		<!-- 配置确认消费消息模式，我们这里使用自动 -->
+		<property name="acknowledgeMode" value="AUTO"></property>
+		<property name="connectionFactory" ref="connectionFactory"></property>
+		<!-- 这里我们直接把 rabbitTemplate 当成一个 messageListener 来使用 -->
+		<property name="messageListener" ref="rabbitTemplate"></property>
+		<!-- 配置监听哪一个队列的消息 
+			【注意】 我们监听的队列，跟默认发送的那个队列其实是同一个队列，这只是为了演示的方便而已，一般都是不一样的
+		-->
+		<property name="queueNames" value="queue.for.template"></property>
+		<property name="messageConverter" ref="messageConverter"></property>
+	</bean>    
+	 
+	 <!-- 配置pojo 类 -->
+	 <bean id="stu" class="cn.itcast.pojo.Student"></bean>
+	 <!-- 配置 messageListenerAdapter -->
+	 <bean id="messageListenerAdapter" class="org.springframework.amqp.rabbit.listener.adapter.MessageListenerAdapter">
+	 	<property name="delegate" ref="stu"></property>
+	 	<property name="defaultListenerMethod" value="handle"></property>
+	 </bean>
+	 <!-- 配置messageListenerAdapter 对应 的容器 -->
+	 <rabbit:listener-container connection-factory="connectionFactory" >
+	 	<rabbit:listener ref="messageListenerAdapter" queue-names="queue.for.pojo.handle"/>
+	 </rabbit:listener-container>
+	 
+	 <!-- 顺便配置一个队列，方便演示， 同时这个队列已经跟 exchange.test 队列绑定好了， BindingKey 为 test.pojo.key -->
+	 <rabbit:queue id="queueForPojoHandle" name="queue.for.pojo.handle"></rabbit:queue>
+
+	 <!-- 先搞两个队列 -->
+	 <rabbit:queue id="queueForDateHandle" name="queue.for.date.handler"></rabbit:queue>
+	 <rabbit:queue id="queueForStringHandle" name="queue.for.string.handler"></rabbit:queue>
+	 <!-- 然后配置一个service 实体类 -->
+	 <bean id="service" class="cn.itcast.pojo.Service"></bean>
+	 
+	 <bean id="consumerTagStrategy" class="cn.itcast.amqp.message.listener.MyConsumerTagStrategy"></bean>
+	 <!-- 再搞一个容器 -->
+	 <rabbit:listener-container connection-factory="connectionFactory" 
+	                            message-converter="messageConverter"
+	                            concurrency="2"
+	                            auto-declare="true"
+	                            auto-startup="true"
+	                            acknowledge="auto">
+	 	<rabbit:listener ref="service" method="handleDate" queue-names="queue.for.date.handler" 
+	 	                              response-exchange="exchange.test" 
+	 	                              response-routing-key="test.date.result.key"/>
+	 	<rabbit:listener ref="service" method="handleString" 
+	 	                              queue-names="queue.for.string.handler"/>
+	 </rabbit:listener-container>
+	 
+	 <rabbit:queue id="queueForDateResult" name="queue.for.date.result"></rabbit:queue>
+</beans>

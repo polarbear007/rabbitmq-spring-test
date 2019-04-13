@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.3.xsd
+		http://www.springframework.org/schema/rabbit http://www.springframework.org/schema/rabbit/spring-rabbit-2.1.xsd
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.3.xsd">
+	
+	<bean id="connectionFactory" class="org.springframework.amqp.rabbit.connection.CachingConnectionFactory">
+		<property name="cacheMode" value="CHANNEL"></property>	
+		<property name="channelCacheSize" value="50"></property>
+		<property name="host" value="192.168.48.131"></property>
+		<property name="port" value="5672"></property>
+		<property name="username" value="admin"></property>
+		<property name="password" value="admin"></property>
+		<property name="virtualHost" value="helloworld2"></property>
+	</bean>
+	
+	<!-- 配置管理对象，这个对象可以创建、绑定、删除交换器和队列 -->
+	<rabbit:admin id="rabbitAdmin" connection-factory="connectionFactory" auto-startup="true"/>
+	<!-- 配置个模板对象，用来发送消息到任务队列 -->
+	<rabbit:template id="rabbitTemplate" connection-factory="connectionFactory" 
+	                                     message-converter="messageConverter"  />
+	
+	<bean id="messageConverter" class="org.springframework.amqp.support.converter.Jackson2JsonMessageConverter"></bean>
+
+	<rabbit:queue id="queueTask" name="queue.task"></rabbit:queue>
+	<rabbit:queue id="queueResult" name="queue.result"></rabbit:queue>
+	<rabbit:direct-exchange id="exchangeTest" name="exchange.test">
+		<rabbit:bindings>
+			<rabbit:binding queue="queueTask" key="task.key"></rabbit:binding>
+			<rabbit:binding queue="queueResult" key="result.key"></rabbit:binding>
+		</rabbit:bindings>
+	</rabbit:direct-exchange>
+	
+	<bean id="worker" class="cn.itcast.pojo.Worker"></bean>
+	
+	<rabbit:listener-container connection-factory="connectionFactory" message-converter="messageConverter">
+		<rabbit:listener ref="worker" queue-names="queue.task" method="handleTask" 
+		                              response-exchange="exchange.test"
+		                              response-routing-key="result.key"/>
+		<rabbit:listener ref="worker" queue-names="queue.result" method="getResult"/>
+	</rabbit:listener-container>
+</beans>

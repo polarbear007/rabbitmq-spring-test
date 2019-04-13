@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.3.xsd
+		http://www.springframework.org/schema/rabbit http://www.springframework.org/schema/rabbit/spring-rabbit-2.1.xsd
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.3.xsd">
+	
+	
+	<bean id="connectionFactory" class="org.springframework.amqp.rabbit.connection.CachingConnectionFactory">
+		<property name="cacheMode" value="CHANNEL"></property>	
+		<property name="channelCacheSize" value="50"></property>
+		<property name="host" value="192.168.48.131"></property>
+		<property name="port" value="5672"></property>
+		<property name="username" value="admin"></property>
+		<property name="password" value="admin"></property>
+		<property name="virtualHost" value="rpc"></property>
+	</bean>
+	
+	<rabbit:admin connection-factory="connectionFactory"/>
+	<bean id="messageConverter" class="org.springframework.amqp.support.converter.Jackson2JsonMessageConverter"></bean>
+	
+	<!-- 配置默认的队列和交换器 -->
+	<rabbit:queue id="rpcTaskQueue" name="queue.rpc.task"></rabbit:queue>
+	<rabbit:queue id="rpcResultQueue" name="queue.rpc.result"></rabbit:queue>
+	
+	<rabbit:direct-exchange id="rpcExchange" name="exchange.rpc">
+		<rabbit:bindings>
+			<rabbit:binding queue="rpcTaskQueue" key="rpc.task.key"></rabbit:binding>
+			<rabbit:binding queue="rpcResultQueue" key="rpc.result.key"></rabbit:binding>
+		</rabbit:bindings>
+	</rabbit:direct-exchange>
+	
+	<!-- 配置发送任务并接收处理结果的的template  
+		  默认等待结果的时间是 5秒，如果5秒内没有在结果队列中拿到指定 correlationId 的消息，就会返回null
+	-->
+	<rabbit:template id="clientTemplate" connection-factory="connectionFactory" 
+										 message-converter="messageConverter"
+										 exchange="exchange.rpc"
+										 routing-key="rpc.task.key"
+										 reply-queue="rpcResultQueue"
+										 reply-address="exchange.rpc/rpc.result.key"
+										 reply-timeout="10000">
+		<rabbit:reply-listener/>
+	</rabbit:template>
+	
+	<!-- 配置一个接收任务、执行任务并最终返回处理结果的 template -->
+	<rabbit:template id="serverTemplate" connection-factory="connectionFactory" 
+										 message-converter="messageConverter"
+										 queue="queue.rpc.task"/>
+	
+	<!-- 配置一个实体类，里面有一个方法专门来处理rpc.queue.task 队列中的任务  	
+	<bean id="rpcTaskHandler" class="cn.itcast.pojo.RpcTaskHandler"></bean>		-->	 
+	<!-- 配置一个 MessageListener 来监听 rpc.queue.task 队列 
+	<rabbit:listener-container connection-factory="connectionFactory" 
+							   message-converter="messageConverter">
+		<rabbit:listener ref="rpcTaskHandler" method="handle" queue-names="queue.rpc.task"
+		                 response-exchange="exchange.rpc"
+		                 response-routing-key="rpc.result.key"/>
+	</rabbit:listener-container>-->
+	
+</beans>

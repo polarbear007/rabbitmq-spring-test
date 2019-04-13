@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.3.xsd
+		http://www.springframework.org/schema/rabbit http://www.springframework.org/schema/rabbit/spring-rabbit-2.1.xsd
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.3.xsd">
+	
+	
+	<bean id="connectionFactory" class="org.springframework.amqp.rabbit.connection.CachingConnectionFactory">
+		<property name="cacheMode" value="CHANNEL"></property>	
+		<property name="channelCacheSize" value="50"></property>
+		<property name="host" value="192.168.48.131"></property>
+		<property name="port" value="5672"></property>
+		<property name="username" value="admin"></property>
+		<property name="password" value="admin"></property>
+		<property name="virtualHost" value="helloworld2"></property>
+		<property name="publisherReturns" value="true"></property>
+		<property name="publisherConfirms" value="true"></property>
+	</bean>
+	
+	<!-- 配置管理对象，这个对象可以创建、绑定、删除交换器和队列 -->
+	<rabbit:admin id="rabbitAdmin" connection-factory="connectionFactory" auto-startup="true"/>
+	
+	<bean id="returnCallBack" class="cn.itcast.amqp.callback.MyReturnCallback"/>
+	
+	<bean id="confirmCallBack" class="cn.itcast.amqp.callback.MyConfirmCallback"></bean>
+	
+	<!-- 当我们给一个 rabbitTemplate 配置了一个 returnCallback 对象，然后双开启了 mandatory 参数
+	     	当我们发送的消息找不到对应的队列投递，就会返回给发送者
+	 -->
+	<rabbit:template id="rabbitTemplate" 
+					 connection-factory="connectionFactory" 
+	                 mandatory="true"
+	                 return-callback="returnCallBack"
+	                 confirm-callback="confirmCallBack"
+	                 />
+	 <!-- 我们配置一个交换器对象，但是不给这个交换器绑定任何队列，然后把消息发给这个交换器，肯定会返回消息 -->
+	<rabbit:direct-exchange id="exchangeTest" name="exchange.test"></rabbit:direct-exchange>
+</beans>
